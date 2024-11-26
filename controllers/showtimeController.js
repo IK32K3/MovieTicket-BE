@@ -12,7 +12,6 @@ exports.createShowtime = async (req, res) => {
 };
 
 // Lấy danh sách tất cả các suất chiếu
-/*
 exports.getAllShowtimes = async (req, res) => {
     try {
         const showtimes = await showtimeService.getAllShowtimes();
@@ -22,7 +21,6 @@ exports.getAllShowtimes = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
-*/
 
 // Lấy suất chiếu theo ID
 exports.getShowtimeById = async (req, res) => {
@@ -70,34 +68,10 @@ exports.getMovieShowtimes = async (req, res) => {
     const { idmovies, location, date } = req.query;
 
     try {
-        // If specific filters are provided
-        if (idmovies || location || date) {
-            const filteredShowtimes = await showtimeService.getMovieShowtimes(idmovies, location, date);
-            return res.status(200).json({ code: 200, message: "Thành công", data: filteredShowtimes });
-        }
-
-        // If no filters are provided, fetch all showtimes
-        const allShowtimes = await showtimeService.getAllShowtimes();
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        return res.status(200).json({ code: 200, message: "Thành công", data: allShowtimes });
+        const data = await showtimeService.getMovieShowtimes(idmovies, location, date);
+        res.status(200).json({ code: 200, message: "Thành công", data });
     } catch (error) {
-        res.status(500).json({ code: 500, message: "Thất bại", error: error.message });
+        res.status(400).json({ code: 400, message: "Thất bại", error: error.message });
     }
 };
 
-exports.getSeatStatus = async (req, res) => {
-    try {
-        const result = await showtimeService.getSeatStatus(req.params.id);
-
-        res.status(200).json({
-            code: 200,
-            message: "Thành công",
-            data: result
-        });
-    } catch (err) {
-        res.status(500).json({
-            code: 500,
-            message: `Thất bại: ${err.message}`
-        });
-    }
-};

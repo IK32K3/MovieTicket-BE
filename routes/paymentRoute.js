@@ -17,6 +17,4 @@ router.put('/:id', paymentController.updatePayment);
 // Route xóa thanh toán
 router.delete('/:id', paymentController.deletePayment);
 
-router.post('/momo', paymentController.createPayment);
-
 module.exports = router;

@@ -3,7 +3,6 @@ const CinemaModel = require("../models/cinema");
 const ShowtimeModel = require("../models/showtime");
 const HallModel = require("../models/hall");
 const SeatModel = require("../models/seat");
-const moment = require('moment-timezone');
 
 // Tạo suất chiếu mới
 exports.createShowtime = async (showtimeData) => {
@@ -12,14 +11,12 @@ exports.createShowtime = async (showtimeData) => {
 
 // Lấy tất cả các suất chiếu
 exports.getAllShowtimes = async () => {
-    const showtimes = await ShowtimeModel.find().populate('movie_id hall_id');    
-    return showtimes; 
+    return await ShowtimeModel.find().populate('movie_id').populate('hall_id'); // Lấy thêm thông tin về phim và phòng chiếu
 };
-
 
 // Lấy suất chiếu theo ID
 exports.getShowtimeById = async (id) => {
-    return await ShowtimeModel.findById(id).populate('movie_id hall_id');
+    return await ShowtimeModel.findById(id).populate('movie_id').populate('hall_id');
 };
 
 // Cập nhật suất chiếu theo ID
@@ -32,85 +29,80 @@ exports.deleteShowtime = async (id) => {
     return await ShowtimeModel.findByIdAndDelete(id);
 };
 
-// Fetching showtimes by movie, location, and date
+
+
 exports.getMovieShowtimes = async (idmovies, location, date) => {
-    // Set the time zone to GMT+7 (Asia/Ho_Chi_Minh for Vietnam)
-    const vietnamTimezone = 'Asia/Ho_Chi_Minh';
-
-    // Convert input date to the specified timezone (Vietnam time)
-    const startOfDay = moment.tz(date, vietnamTimezone).startOf('day').toDate();
-    const endOfDay = moment.tz(date, vietnamTimezone).endOf('day').toDate();
-
+    // Check if the movie exists
     const movie = await MovieModel.findById(idmovies);
     if (!movie) throw new Error("Movie not found");
 
+    // Find cinemas in the specified location
     const cinemas = await CinemaModel.find({ city: location });
-    if (!cinemas.length) throw new Error("No cinemas found in this location");
+    if (!cinemas || cinemas.length === 0) throw new Error("No cinemas found in this location");
 
-    const cinemaIds = cinemas.map((cinema) => cinema._id);
+    // Fetch showtimes for the movie on the selected date
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
 
-    // Find the showtimes within the specified date range for the movie
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
     const showtimes = await ShowtimeModel.find({
         movie_id: idmovies,
-        start_time: { $gte: startOfDay, $lte: endOfDay },
-        hall_id: { $in: await HallModel.find({ cinema_id: { $in: cinemaIds } }).distinct("_id") }
-    }).populate("hall_id");
+        start_time: { $gte: startOfDay, $lte: endOfDay }
+    }).populate("hall_id"); // Populate hall data
 
-    // Process the cinemas and showtimes
-    const data = await Promise.all(
+    // Group showtimes by cinema
+    const responseData = await Promise.all(
         cinemas.map(async (cinema) => {
-            const halls = await Promise.all(
-                showtimes
-                    .filter((showtime) => {
-                        const hall = showtime.hall_id;
-                        return hall && hall.cinema_id.toString() === cinema._id.toString();
-                    })
-                    .map(async (showtime) => {
-                        const totalSeats = showtime.hall_id.seats; // Directly from the populated Hall model
-                        const bookedSeats = await SeatModel.countDocuments({ showtime_id: showtime._id });
-                        const seatsAvailable = totalSeats - bookedSeats;
-
-                        return {
-                            idhalls: showtime.hall_id._id,
-                            name: showtime.hall_id.name,
-                            showtimes: [
-                                {
-                                    idshowtimes: showtime._id,
-                                    start_time: showtime.start_time,
-                                    end_time: showtime.end_time,
-                                    seatsAvailable,
-                                    isAlmostFull: seatsAvailable <= totalSeats / 3,
-                                    isSoldOut: seatsAvailable === 0,
-                                }
-                            ]
-                        };
-                    })
+            const cinemaHalls = showtimes.filter((showtime) =>
+                showtime.hall_id.cinema_id.equals(cinema._id)
             );
 
-            return halls.length
-                ? { idcinemas: cinema._id, name: cinema.name, address: cinema.address, hall: halls }
-                : null;
+            const hallData = await Promise.all(
+                cinemaHalls.map(async (showtime) => {
+                    const hall = showtime.hall_id;
+
+                    // Get seats for the hall
+                    const seats = await SeatModel.find({ hall_id: hall._id });
+                    const availableSeats = seats.filter(
+                        (seat) => seat.status === "available"
+                    ).length;
+
+                    const isSoldOut = availableSeats === 0;
+                    const isAlmostFull = availableSeats <= hall.seats / 3;
+
+                    return {
+                        idhalls: hall._id,
+                        name: hall.name,
+                        showtimes: [
+                            {
+                                idshowtimes: showtime._id,
+                                start_time: showtime.start_time.toISOString(),
+                                end_time: showtime.end_time.toISOString(),
+                                seatsAvailable: availableSeats,
+                                isAlmostFull,
+                                isSoldOut,
+                            },
+                        ],
+                    };
+                })
+            );
+
+            return {
+                idcinemas: cinema._id,
+                name: cinema.name,
+                address: cinema.address,
+                hall: hallData,
+            };
         })
     );
 
     return {
-        idmovies,
+        idmovies: movie._id,
         name: movie.title,
         date,
-        cinemas: data.filter((cinema) => cinema !== null),
+        cinemas: responseData,
     };
 };
 
-// Get booked seats for a specific showtime
-exports.getSeatStatus = async (idshowtimes) => {
-    // Fetch booked seats for the given showtime
-    const seats = await SeatModel.find({ 
-        showtime_id: idshowtimes, 
-        status: "booked" 
-    });
-
-    // Extract seat numbers
-    const bookedSeats = seats.map(seat => seat.seat_number);
-
-    return { idshowtimes, bookedSeats };
-};
