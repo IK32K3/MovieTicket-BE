@@ -2,11 +2,15 @@ const express = require('express');
 const router = express.Router();
 const showtimeController = require('../controllers/showtimeController');
 
+
 // Route tạo suất chiếu mới
 router.post('/', showtimeController.createShowtime);
 
 // Route lấy tất cả các suất chiếu
-router.get('/', showtimeController.getAllShowtimes);
+//router.get('/', showtimeController.getAllShowtimes);
+
+// Route lấy seat status
+router.get('/:id/seatstatus', showtimeController.getSeatStatus);
 
 // Route lấy suất chiếu theo ID
 router.get('/:id', showtimeController.getShowtimeById);
@@ -18,5 +22,7 @@ router.put('/:id', showtimeController.updateShowtime);
 router.delete('/:id', showtimeController.deleteShowtime);
 
 router.get('/', showtimeController.getMovieShowtimes);
+
+
 
 module.exports = router;
